@@ -39,22 +39,7 @@ from sklearn.metrics import mean_squared_error
 # y_pred = grid_search.predict(X_test)
 # mse = mean_squared_error(y_test, y_pred)
 # print(f'Mean Squared Error: {mse}')
-Movie Recommendations system:- ChatGPT
-
-You said:
-Provide me the house prices using advance regression technique 
-ChatGPT said:
-ChatGPT
-
-
-
-
-
-You said:
-Tell me 
-ChatGPT said:
-ChatGPT
-To predict house prices using advanced regression techniques, you can use a variety of methods depending on the complexity of your data and the accuracy you desire. Below are some common techniques:
+Movie Recommendations system:- 
 
 1. Multiple Linear Regression
 Concept: Predict the price of a house using multiple independent variables (e.g., size, number of bedrooms, location).
