@@ -330,3 +330,212 @@ importances = best_model.feature_importances_
 feature_names = X.columns
 feature_importance = pd.Series(importances, index=feature_names).sort_values(ascending=False)
 print("Feature Importance:\n", feature_importance)
+Meta learning few shots vision NLP:-
+import numpy as np
+import tensorflow as tf
+import torch
+from torch.utils.data import Dataset, DataLoader
+from transformers import BertTokenizer, BertForSequenceClassification, Trainer, TrainingArguments
+from datasets import load_dataset
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+from object_detection.utils import visualization_utils as vis_util
+from object_detection.utils import label_map_util
+
+# -------------------------------
+# 1. Meta-Learning for Adaptive Image Classification
+# -------------------------------
+
+def create_cnn_model():
+    model = tf.keras.Sequential([
+        tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
+        tf.keras.layers.MaxPooling2D((2, 2)),
+        tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
+        tf.keras.layers.MaxPooling2D((2, 2)),
+        tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
+        tf.keras.layers.Flatten(),
+        tf.keras.layers.Dense(64, activation='relu'),
+        tf.keras.layers.Dense(10, activation='softmax')
+    ])
+    model.compile(optimizer='adam',
+                  loss='categorical_crossentropy',
+                  metrics=['accuracy'])
+    return model
+
+def meta_learning_image_classification(x_train, y_train, x_test, y_test, epochs=10):
+    model = create_cnn_model()
+    for epoch in range(epochs):
+        model.fit(x_train, y_train, epochs=1, batch_size=32, verbose=1)
+        test_loss, test_acc = model.evaluate(x_test, y_test, verbose=2)
+        print(f"Epoch {epoch+1}/{epochs}, Test Accuracy: {test_acc}")
+    return model
+
+# Load and preprocess MNIST data
+(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+x_train, x_test = x_train / 255.0, x_test / 255.0
+x_train = x_train.reshape(-1, 28, 28, 1)
+x_test = x_test.reshape(-1, 28, 28, 1)
+y_train = tf.keras.utils.to_categorical(y_train, 10)
+y_test = tf.keras.utils.to_categorical(y_test, 10)
+
+# Train meta-learning model
+model = meta_learning_image_classification(x_train, y_train, x_test, y_test)
+
+# -------------------------------
+# 2. Few-Shot Object Detection with Transfer Learning
+# -------------------------------
+
+def load_object_detection_model():
+    PATH_TO_CKPT = 'ssd_mobilenet_v1_coco/saved_model'
+    return tf.saved_model.load(PATH_TO_CKPT)
+
+def run_inference(image, model):
+    image_np = np.asarray(image)
+    input_tensor = tf.convert_to_tensor(image_np)
+    input_tensor = input_tensor[tf.newaxis, ...]
+    output_dict = model(input_tensor)
+    return {key:value.numpy() for key,value in output_dict.items()}
+
+def visualize_detection_results(image, output_dict):
+    vis_util.visualize_boxes_and_labels_on_image_array(
+        image,
+        output_dict['detection_boxes'],
+        output_dict['detection_classes'],
+        output_dict['detection_scores'],
+        label_map_util.create_category_index_from_labelmap('path/to/label_map.pbtxt'),
+        instance_masks=output_dict.get('detection_masks_reframed', None),
+        use_normalized_coordinates=True,
+        line_thickness=8)
+    plt.imshow(image)
+    plt.show()
+
+# Load object detection model and image
+detection_model = load_object_detection_model()
+image_path = 'path/to/image.jpg'
+image = tf.image.decode_image(tf.io.read_file(image_path))
+
+# Run object detection
+output_dict = run_inference(image, detection_model)
+
+# Visualize detection results
+visualize_detection_results(image, output_dict)
+
+# -------------------------------
+# 3. Few-Shot Learning for Sentiment Analysis
+# -------------------------------
+
+def train_sentiment_analysis_model(train_texts, train_labels, val_texts, val_labels):
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    train_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=128)
+    val_encodings = tokenizer(val_texts, truncation=True, padding=True, max_length=128)
+
+    class SentimentDataset(Dataset):
+        def __init__(self, encodings, labels):
+            self.encodings = encodings
+            self.labels = labels
+
+        def __getitem__(self, idx):
+            item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+            item['labels'] = torch.tensor(self.labels[idx])
+            return item
+
+        def __len__(self):
+            return len(self.labels)
+
+    train_dataset = SentimentDataset(train_encodings, train_labels)
+    val_dataset = SentimentDataset(val_encodings, val_labels)
+
+    model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
+    training_args = TrainingArguments(
+        output_dir='./results',
+        num_train_epochs=3,
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
+        warmup_steps=500,
+        weight_decay=0.01,
+        logging_dir='./logs',
+    )
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=val_dataset
+    )
+    trainer.train()
+
+# Load sentiment analysis dataset and preprocess
+dataset = load_dataset("amazon_polarity")
+train_texts, val_texts, train_labels, val_labels = train_test_split(
+    dataset['train']['text'],
+    dataset['train']['label'],
+    test_size=0.1
+)
+
+# Train sentiment analysis model
+train_sentiment_analysis_model(train_texts, train_labels, val_texts, val_labels)
+
+# -------------------------------
+# 4. Meta-Learning for Few-Shot Text Classification
+# -------------------------------
+
+class FewShotTextDataset(Dataset):
+    def __init__(self, texts, labels, tokenizer, max_len):
+        self.texts = texts
+        self.labels = labels
+        self.tokenizer = tokenizer
+        self.max_len = max_len
+
+    def __len__(self):
+        return len(self.texts)
+
+    def __getitem__(self, idx):
+        text = self.texts[idx]
+        label = self.labels[idx]
+        encodings = self.tokenizer(text, truncation=True, padding='max_length', max_length=self.max_len, return_tensors='pt')
+        return {'input_ids': encodings['input_ids'].flatten(),
+                'attention_mask': encodings['attention_mask'].flatten(),
+                'labels': torch.tensor(label, dtype=torch.long)}
+
+def train_few_shot_text_classification(train_texts, train_labels):
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)
+
+    train_dataset = FewShotTextDataset(train_texts, train_labels, tokenizer, max_len=128)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-5)
+    model.train()
+    for epoch in range(3):
+        for batch in train_loader:
+            optimizer.zero_grad()
+            outputs = model(input_ids=batch['input_ids'], attention_mask=batch['attention_mask'], labels=batch['labels'])
+            loss = outputs.loss
+            loss.backward()
+            optimizer.step()
+        print(f"Epoch {epoch+1}, Loss: {loss.item()}")
+
+# Example data for few-shot text classification
+train_texts = ["example text"] * 10
+train_labels = [0] * 10
+
+# Train few-shot text classification model
+train_few_shot_text_classification(train_texts, train_labels)
+The provided script covers both machine learning and deep learning algorithms. Here's a breakdown of how each algorithm fits into these categories:
+
+### Deep Learning Algorithms:
+1. **Meta-Learning for Image Classification**:
+   - Uses a Convolutional Neural Network (CNN) implemented with TensorFlow/Keras for image classification. This is a deep learning model that learns from images using multiple layers of convolutions.
+
+2. **Few-Shot Object Detection**:
+   - Utilizes a pre-trained SSD (Single Shot MultiBox Detector) model from TensorFlow's object detection API. Object detection models like SSD are deep learning models that detect and classify objects in images.
+
+3. **Few-Shot Sentiment Analysis**:
+   - Employs BERT (Bidirectional Encoder Representations from Transformers), a deep learning model for natural language processing (NLP). BERT is used for text classification tasks, leveraging deep transformer architecture.
+
+4. **Meta-Learning for Text Classification**:
+   - Also uses BERT for text classification, which is a deep learning approach. This includes techniques like fine-tuning pre-trained transformer models for specific tasks.
+
+### Machine Learning Algorithms:
+- The **Few-Shot Learning** approach can be considered a meta-learning technique, which is a higher-level concept involving learning to learn from a few examples. While the script uses deep learning models (e.g., BERT), meta-learning itself can be viewed as a broader machine learning technique.
+
+In summary, the script predominantly uses deep learning techniques, particularly neural networks and transformer models, to address tasks in image and text processing.
